@@ -3,7 +3,7 @@
 //! trait constraints blocks an `Actor` when the internal method `handle` is called.
 //! This strategy forwards the `Future`s created by `handle` so that they can
 //! be `await`ed elsewhere in the program, unblocking the `handle` method for
-//! an `Actor`, in this case a `Batcher`.
+//! an `Actor`, in this case a `BatcherActor`.
 use futures::{
     future::BoxFuture,
     stream::{FuturesUnordered, StreamExt},
@@ -11,17 +11,6 @@ use futures::{
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::{self, sync::Mutex};
-
-#[derive(Error, Debug)]
-enum BatcherError {
-    #[error("failed")]
-    Error,
-}
-
-#[derive(Clone)]
-enum BatcherMessage {
-    GetNextBatch,
-}
 
 struct Batcher {
     future_pool: FuturesUnordered<BoxFuture<'static, Result<(), BatcherError>>>,
@@ -42,22 +31,17 @@ impl Batcher {
     }
 }
 
-// defined in ractor crate
-trait Actor: Sized + Send + Sync + 'static {
-    type Msg;
-    type State;
-    async fn handle(
-        &self,
-        myself: Self::Msg,
-        message: Self::Msg,
-        state: &mut Self::State,
-    ) -> Result<(), ActorProcessingErr>;
-}
 #[derive(Error, Debug)]
-enum ActorProcessingErr {
+enum BatcherError {
     #[error("failed")]
     Error,
 }
+
+#[derive(Clone)]
+enum BatcherMessage {
+    GetNextBatch,
+}
+
 struct BatcherActor;
 impl Actor for BatcherActor {
     type Msg = BatcherMessage;
@@ -78,6 +62,25 @@ impl Actor for BatcherActor {
         }
         Ok(())
     }
+}
+
+// This is a minimal repro of types defined in the `ractor` crate.
+// It does not reflect all requirements, only what is necessary
+// for the `handle` method.
+trait Actor: Sized + Send + Sync + 'static {
+    type Msg;
+    type State;
+    async fn handle(
+        &self,
+        myself: Self::Msg,
+        message: Self::Msg,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr>;
+}
+#[derive(Error, Debug)]
+enum ActorProcessingErr {
+    #[error("failed")]
+    Error,
 }
 
 #[tokio::main]
@@ -121,7 +124,7 @@ async fn main() {
         .await
         .unwrap();
 
-    // Program must keep running so that the thread will continue to process incoming `Future`s.
+    // Program must keep running so that the future handler thread will continue to process incoming `Future`s.
     // Adding `thread::sleep` to reduce wasted cpu cycles.
     loop {
         std::thread::sleep(std::time::Duration::from_secs(2));
