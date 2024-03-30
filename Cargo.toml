@@ -1,5 +1,5 @@
 [package]
-name = "batcher_test"
+name = "future_handler_poc"
 version = "0.1.0"
 edition = "2021"
 
