@@ -313,6 +313,7 @@ name = "ractor_future_handler"
 version = "0.1.0"
 dependencies = [
  "futures",
+ "num_cpus",
  "thiserror",
  "tokio",
  "tokio-rayon",

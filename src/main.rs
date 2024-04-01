@@ -7,6 +7,7 @@
 use futures::{
     future::BoxFuture,
     stream::{FuturesUnordered, StreamExt},
+    FutureExt,
 };
 use std::sync::Arc;
 use thiserror::Error;
@@ -52,9 +53,9 @@ impl Actor for BatcherActor {
     ) -> Result<(), ActorProcessingErr> {
         match message {
             BatcherMessage::GetNextBatch => {
-                let fut = Box::pin(Batcher::handle_next_batch_request(Arc::clone(state)));
+                let fut = Batcher::handle_next_batch_request(Arc::clone(state));
                 let batcher = state.lock().await;
-                batcher.future_pool.push(fut);
+                batcher.future_pool.push(fut.boxed());
                 println!("sent");
             }
         }
@@ -91,7 +92,7 @@ async fn main() {
         .await
         .unwrap();
     let pool = tokio_rayon::rayon::ThreadPoolBuilder::new()
-        .num_threads(8)
+        .num_threads(num_cpus::get())
         .build()
         .unwrap();
     // We don't await the task here since we want to continuously poll
@@ -102,10 +103,12 @@ async fn main() {
             let mut guard = batcher_clone.lock().await;
             tokio::select! {
                 fut = guard.future_pool.next() => {
-                    if let Some(Ok(task)) = fut {
+                    if let Some(task) = fut {
                         pool.install(|| async move {
                             println!("received");
-                            task
+                            if let Err(err) = task {
+                                println!("failed: {err:?}");
+                            }
                         })
                         .await;
                     }
