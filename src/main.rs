@@ -16,10 +16,8 @@ struct Batcher {
     future_pool: FuturesUnordered<BoxFuture<'static, Result<(), BatcherError>>>,
 }
 impl Batcher {
-    fn handle_next_batch_request(
-        batch: Arc<Mutex<Batcher>>,
-    ) -> BoxFuture<'static, Result<(), BatcherError>> {
-        Box::pin(Batcher::do_something(batch))
+    async fn handle_next_batch_request(batch: Arc<Mutex<Batcher>>) -> Result<(), BatcherError> {
+        Batcher::do_something(batch).await
     }
     async fn do_something(_batch: Arc<Mutex<Batcher>>) -> Result<(), BatcherError> {
         Ok(())
@@ -54,7 +52,7 @@ impl Actor for BatcherActor {
     ) -> Result<(), ActorProcessingErr> {
         match message {
             BatcherMessage::GetNextBatch => {
-                let fut = Batcher::handle_next_batch_request(Arc::clone(state));
+                let fut = Box::pin(Batcher::handle_next_batch_request(Arc::clone(state)));
                 let batcher = state.lock().await;
                 batcher.future_pool.push(fut);
                 println!("sent");
